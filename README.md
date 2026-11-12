@@ -40,6 +40,7 @@ reports/
   metadados_coleta.csv        URL, data, MD5, linhas/colunas, tamanho CSV × Parquet por arquivo
   benchmark_csv_parquet.csv   tempo de leitura e tamanho CSV × Parquet
   log_limpeza.csv             problema · decisão · justificativa · linhas afetadas
+  relatorio.pdf               relatório final da Etapa 1 (máx. 10 páginas, padrão UTFPR)
   figuras/                    PNGs das visualizações
 certs/       bundle de certificados para o download.inep.gov.br (ver abaixo)
 ```
