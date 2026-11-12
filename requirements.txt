@@ -1,0 +1,12 @@
+duckdb==2.0.0
+pandas==3.1.1
+pyarrow==26.0.1
+requests==2.34.2
+certifi==2026.10.23
+matplotlib==3.11.2
+seaborn==0.13.2
+geopandas==1.2.0
+nbformat==5.11.1
+nbconvert==7.17.2
+ipykernel==7.4.0
+jupyter==1.1.1

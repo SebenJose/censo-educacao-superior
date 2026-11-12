@@ -1,0 +1,12 @@
+# dados grandes: recriados por src/coleta.py, src/limpeza.py e src/gold.py
+data/bronze/
+data/silver/
+data/_duckdb_tmp/
+# a camada gold é pequena (~1,6 MB) e fica versionada para o notebook abrir sem refazer o pipeline
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# material da disciplina
+Projeto - Descrição*.pdf
