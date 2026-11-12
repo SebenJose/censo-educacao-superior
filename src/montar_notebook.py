@@ -272,7 +272,93 @@ ax.set_title("Cursos presenciais (2024): tamanho do curso correlaciona-se fortem
 salvar(fig, "eda_correlacao"); plt.show()
 """)
 md("""
-### 2.5 Lista priorizada de problemas de qualidade (entrada da Etapa 3)
+### 2.5 Respostas preliminares às perguntas (sobre o bronze)
+
+Primeira leitura das cinco perguntas com os dados **brutos**, antes de qualquer tratamento. As somas só excluem a
+dimensão 3 (EAD "somente Brasil") e os cursos sequenciais, para não dobrar contagens. Os números finais estão na seção 4,
+e as diferenças entre as duas leituras mostram o efeito da limpeza.
+""")
+code('''
+N = lambda c: f"try_cast(nullif(nullif(trim({c}), ''), '.') as bigint)"
+FILTRO = "TP_DIMENSAO in ('1','2','4') and coalesce(TP_NIVEL_ACADEMICO, '1') <> '2'"
+pre = sql(f"""
+    select cast(NU_ANO_CENSO as int) ano, TP_MODALIDADE_ENSINO modalidade, CO_REGIAO regiao, TP_REDE rede,
+           sum({N('QT_ING')}) ing, sum({N('QT_MAT')}) mat, sum({N('QT_ING_FEM')}) ing_fem,
+           sum({N('QT_ING_FIES')}) fies, sum({N('QT_ING_PROUNII')}) + sum({N('QT_ING_PROUNIP')}) prouni,
+           sum({N('QT_ING_CORND')}) cornd, sum({N('QT_ING_PRETA')}) + sum({N('QT_ING_PARDA')}) + sum({N('QT_ING_INDIGENA')}) ppi,
+           sum({N('QT_ING_PROCESCPUBLICA')}) escpub,
+           sum({' + '.join(N('QT_ING_' + f) for f in ['25_29', '30_34', '35_39', '40_49', '50_59', '60_MAIS'])}) ing25
+    from bronze_cursos where {FILTRO} group by all""")
+reg_nome = {"1": "Norte", "2": "Nordeste", "3": "Sudeste", "4": "Sul", "5": "Centro-Oeste"}
+
+# P1 – série anual por modalidade e por região
+p1 = pre.pivot_table(index="ano", columns="modalidade", values="ing", aggfunc="sum").rename(columns={"1": "Presencial", "2": "EAD"})
+p1r = pre.pivot_table(index="ano", columns="regiao", values="mat", aggfunc="sum").rename(columns=reg_nome)
+fig, axs = plt.subplots(1, 2, figsize=(13, 4.2))
+for m in ["Presencial", "EAD"]:
+    axs[0].plot(p1.index, p1[m], marker="o", lw=2, color=COR[m], label=m)
+axs[0].set_title("Ingressantes por modalidade (bronze)", fontsize=11); axs[0].yaxis.set_major_formatter(mil); axs[0].legend(frameon=False)
+for r_ in [c for c in p1r.columns if c in reg_nome.values()]:
+    axs[1].plot(p1r.index, p1r[r_], marker="o", lw=2, label=r_)
+axs[1].set_title("Matrículas por região (bronze)", fontsize=11); axs[1].yaxis.set_major_formatter(mil); axs[1].legend(frameon=False, fontsize=8)
+fig.suptitle(f"Leitura preliminar: o EAD vai de {p1.loc[2009, 'EAD'] / p1.loc[2009].sum():.0%} para {p1.loc[2024, 'EAD'] / p1.loc[2024].sum():.0%} "
+             "dos ingressantes e as matrículas crescem em todas as regiões", fontweight="bold", fontsize=12)
+salvar(fig, "eda_preliminar_temporal"); plt.show()
+print(f"P1: ingressantes {p1.loc[2009].sum():,.0f} (2009) → {p1.loc[2024].sum():,.0f} (2024); "
+      f"EAD {p1.loc[2009, 'EAD'] / p1.loc[2009].sum():.1%} → {p1.loc[2024, 'EAD'] / p1.loc[2024].sum():.1%}")
+''')
+code('''
+# P2 – matrículas por 100 mil hab. por região, com a população bruta do IBGE (estimativas e Censos)
+pop_b = pd.read_parquet(C.BRONZE / "ibge_populacao_uf" / "populacao_uf.parquet")
+pop_b = pop_b[pop_b.co_uf.isin(C.UFS)].sort_values("origem").drop_duplicates(["co_uf", "ano"])
+pop_b["regiao"] = pop_b.co_uf.map(lambda c: C.UFS[c][2])
+pop_r = pop_b.groupby(["ano", "regiao"]).populacao.sum()
+p2 = pd.DataFrame({a: (p1r.loc[a] / pop_r.loc[a] * 1e5) for a in [2009, 2024] if a in pop_r.index.get_level_values(0)}).dropna().round(0)
+p2["razao_2024_2009"] = (p2[2024] / p2[2009]).round(2)
+display(p2.sort_values(2024).rename_axis("matrículas por 100 mil hab."))
+print(f"P2: razão entre a maior e a menor região {p2[2009].max() / p2[2009].min():.1f}× (2009) → {p2[2024].max() / p2[2024].min():.1f}× (2024)")
+''')
+code('''
+# P3 e P4 – composição por ano (proporções sobre o total bruto de ingressantes/matrículas)
+tot = pre.groupby("ano")[["ing", "mat", "ing_fem", "fies", "prouni", "cornd", "ppi", "escpub", "ing25"]].sum()
+rede = pre.pivot_table(index="ano", columns="rede", values="mat", aggfunc="sum", dropna=False)
+p34 = pd.DataFrame({
+    "% matrículas privadas (TP_REDE=2)": rede.get("2") / tot.mat,
+    "% matrículas com rede vazia": 1 - rede.drop(columns=[c for c in rede.columns if c not in ("1", "2")]).sum(axis=1) / tot.mat,
+    "% ingressantes FIES": tot.fies / tot.ing, "% ingressantes PROUNI": tot.prouni / tot.ing,
+    "% mulheres": tot.ing_fem / tot.ing, "% 25 anos ou mais": tot.ing25 / tot.ing,
+    "% cor/raça não declarada": tot.cornd / tot.ing, "% PPI (sobre o total)": tot.ppi / tot.ing,
+    "% escola pública (sobre o total)": tot.escpub / tot.ing,
+})
+display(p34.loc[[2009, 2012, 2013, 2014, 2019, 2024]].T.map(lambda v: f"{v:.1%}" if pd.notna(v) else "–"))
+''')
+code('''
+# P5 – nota média bruta do ENADE por ano e modalidade (só presentes com prova válida)
+# a modalidade está no arquivo de cursos (arq1); por LGPD a única ligação com as notas (arq3) é o código do curso
+p5 = sql(f"""
+    with cur as (select distinct NU_ANO, CO_CURSO, CO_MODALIDADE
+                 from read_parquet('{C.BRONZE}/enade_curso/*/*.parquet', hive_partitioning=true, union_by_name=true))
+    select cast(e.NU_ANO as int) ano, case cur.CO_MODALIDADE when '0' then 'EAD' when '1' then 'Presencial' end modalidade,
+           round(avg(try_cast(replace(e.NT_GER, ',', '.') as double)), 1) nota_media, count(*) inscritos_validos
+    from bronze_enade e join cur using (NU_ANO, CO_CURSO)
+    where e.TP_PRES = '555' and e.TP_PR_GER = '555' group by all order by all""")
+display(p5.pivot(index="ano", columns="modalidade", values="nota_media"))
+print("A rede (pública/privada) não existe no arquivo do ENADE: a comparação por rede só é possível após integrar com o Censo pelo código do curso.")
+''')
+md("""
+**Leitura preliminar e o que ela já indica para a limpeza**
+
+- **P1.** O crescimento dos ingressantes vem do EAD, e as matrículas crescem em todas as regiões. A tendência deve se manter após a limpeza, porque a dimensão 3 já foi excluída aqui.
+- **P2.** A taxa por habitante sobe em todas as regiões e a distância entre a maior e a menor diminui. Falta descer ao nível de UF, com a população tratada.
+- **P3.** A série de rede quebra em 2013: quase todas as matrículas daquele ano estão com a rede vazia. O FIES sobe até 2014 e depois cai. **A rede precisa ser reconstruída antes de responder.**
+- **P4.** O percentual de 25 anos ou mais e o de mulheres sobem. A cor/raça não declarada passa de 70% no início da série, e o percentual de escola pública "salta" de 0% em 2009. **Os dois indicadores precisam de denominador próprio (só quem declarou ou informou).**
+- **P5.** Os presenciais têm nota média maior que os EAD em todos os anos. **A comparação por rede depende da integração com o Censo.**
+
+Esses pontos entram na lista priorizada a seguir e viram decisões no log de limpeza.
+""")
+
+md("""
+### 2.6 Lista priorizada de problemas de qualidade (entrada da Etapa 3)
 
 | # | Problema | Impacto se ignorado |
 |---|---|---|

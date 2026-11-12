@@ -25,10 +25,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import config as C  # noqa: E402
 
 LOG: list[dict] = []
+ATUAL: dict[str, int] = {}  # contagem corrente de linhas de cada tabela tratada
 
 
-def registrar(etapa, problema, decisao, justificativa, linhas_afetadas, linhas_antes=None, linhas_depois=None):
-    LOG.append(dict(etapa=etapa, problema=problema, decisao=decisao, justificativa=justificativa,
+def registrar(etapa, problema, decisao, justificativa, linhas_afetadas, linhas_antes=None, linhas_depois=None,
+              tabela=None):
+    """Registra uma decisão. Sem antes/depois explícitos, usa a contagem corrente da tabela
+    (decisões que marcam ou convertem valores não mudam o número de linhas: antes = depois)."""
+    tabela = tabela or etapa
+    if linhas_antes is None:
+        linhas_antes = ATUAL.get(tabela)
+    if linhas_depois is None:
+        linhas_depois = linhas_antes
+    if linhas_depois is not None:
+        ATUAL[tabela] = int(linhas_depois)
+    LOG.append(dict(etapa=etapa, tabela=tabela, problema=problema, decisao=decisao, justificativa=justificativa,
                     linhas_afetadas=int(linhas_afetadas),
                     linhas_antes=None if linhas_antes is None else int(linhas_antes),
                     linhas_depois=None if linhas_depois is None else int(linhas_depois)))
@@ -326,7 +337,8 @@ def limpar_populacao(con):
     out["populacao"] = out.populacao.round().astype("int64")
     registrar("ibge", f"População ausente nos anos {sorted(faltantes.ano.unique().tolist())} "
               "(sem estimativa publicada)", "Interpolação linear entre anos vizinhos, por UF",
-              "Crescimento populacional é suave; erro esperado < 1%", len(faltantes))
+              "Crescimento populacional é suave; erro esperado < 1%", len(faltantes),
+              len(out), len(out), tabela="populacao_uf")
     out.to_parquet(C.SILVER / "populacao_uf.parquet", index=False)
     shutil.copy(C.BRONZE / "ibge_municipios" / "municipios.parquet", C.SILVER / "municipios.parquet")
     con.register("pop", out)
@@ -336,7 +348,7 @@ def limpar_populacao(con):
     registrar("integracao", "Linhas do Censo sem população (chave UF×ano)",
               "Ficam fora das taxas por 100 mil hab., mas dentro do total Brasil",
               f"{n-nao:,} de {n:,} linhas com alunos casaram ({100*(n-nao)/n:.2f}%); "
-              "as que não casam são EAD no exterior/sem UF", nao)
+              "as que não casam são EAD no exterior/sem UF", nao, tabela="censo")
 
 
 # ======================================================================= ENADE
@@ -382,11 +394,14 @@ def limpar_enade(con):
             try_cast(CO_REGIAO_CURSO as tinyint) co_regiao_curso
         from read_parquet('{C.BRONZE}/enade_curso/*/*.parquet', hive_partitioning=true, union_by_name=true)""")
     n_cursos_conflito = q1(con, "select count(*) from (select ano, co_curso from ec group by 1,2 having count(*)>1)")
+    n_ec0 = q1(con, "select count(*) from ec")
     con.execute("create or replace table ec as select * from ec qualify row_number() over "
                 "(partition by ano, co_curso order by co_munic_curso) = 1")
+    n_ec1 = q1(con, "select count(*) from ec")
     registrar("enade", "Atributos de curso repetidos 1×estudante no arquivo arq1",
               "Deduplicados para 1 linha por (ano, curso)",
-              f"Cursos com atributos conflitantes: {n_cursos_conflito} (mantida a 1ª ocorrência)", n_cursos_conflito)
+              f"Cursos com atributos conflitantes: {n_cursos_conflito} (mantida a 1ª ocorrência)", n_cursos_conflito,
+              n_ec0, n_ec1, tabela="enade_curso")
 
     # atributos do Censo por curso-ano (rede, área CINE, modalidade)
     con.execute("""create or replace table censo_curso as select ano, co_curso,
@@ -404,11 +419,11 @@ def limpar_enade(con):
     nao_ec = q1(con, "select count(*) from silver_enade where co_ies is null")
     nao_cc = q1(con, "select count(*) from silver_enade where ds_rede is null")
     registrar("integracao", "Inscritos ENADE sem curso no arquivo de cursos do ENADE (arq1)",
-              "Mantidos; atributos de curso nulos", f"{n0-nao_ec:,} de {n0:,} casaram", nao_ec)
+              "Mantidos; atributos de curso nulos", f"{n0-nao_ec:,} de {n0:,} casaram", nao_ec, tabela="enade")
     registrar("integracao", "Inscritos ENADE cujo CO_CURSO não aparece no Censo do mesmo ano",
               "Mantidos; rede/área CINE ficam nulas",
               f"{n0-nao_cc:,} de {n0:,} casaram ({100*(n0-nao_cc)/n0:.2f}%); cursos extintos/não recenseados",
-              nao_cc)
+              nao_cc, tabela="enade")
 
     # perfil por curso (sexo, idade) – arquivos LGPD não ligáveis ao estudante
     con.execute(f"""create or replace table sx as select cast(NU_ANO as smallint) ano,
@@ -420,9 +435,11 @@ def limpar_enade(con):
     n_sx_inv = q1(con, "select count(*) from sx where sexo not in ('M', 'F')")
     n_id_inv = q1(con, "select count(*) from idd where idade is null or idade < 16 or idade > 90")
     registrar("enade", "Sexo fora de {M,F} (ex.: código 9/N)", "Categoria 'Não informado'; fora do % feminino",
-              "Remover reduziria o denominador de forma arbitrária", n_sx_inv)
+              "Remover reduziria o denominador de forma arbitrária", n_sx_inv,
+              *[q1(con, "select count(*) from sx")] * 2, tabela="enade_sexo")
     registrar("enade", "Idade ausente ou implausível (<16 ou >90)", "Convertida para NULL",
-              "Erro de cadastro; não entra na média", n_id_inv)
+              "Erro de cadastro; não entra na média", n_id_inv,
+              *[q1(con, "select count(*) from idd")] * 2, tabela="enade_idade")
     con.execute("""create or replace table silver_perfil as
         with a as (select ano, co_curso, count(*) n_inscritos_sexo,
                           avg(case when sexo='F' then 1.0 when sexo='M' then 0.0 end) pct_fem from sx group by 1,2),

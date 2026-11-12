@@ -1,36 +1,36 @@
-etapa,problema,decisao,justificativa,linhas_afetadas,linhas_antes,linhas_depois
-censo,Nomes de colunas em MAIÚSCULAS com prefixos INEP,Padronizados para snake_case sem acento; 227→101 colunas mantidas (demais seguem no bronze),Legibilidade e consistência entre anos; colunas não usadas nas perguntas reduzem memória,3851933,3851933.0,3851933.0
-censo,Tipos: tudo VARCHAR no bronze,Cast para TINYINT/SMALLINT/INTEGER com try_cast,Inteiros de tamanho adequado reduzem memória; valores não numéricos viram nulo (falhas de conversão: 0),0,,
-censo,"CO_CINE_ROTULO com aspas duplicadas (ex.: """"""0011A09"""""")",Removidas as aspas,Padroniza o código CINE para junções e decodificação,3507242,,
-censo,Marcador '.' (não aplicável) em campos numéricos,Convertido para NULL,"No layout INEP '.' significa 'não se aplica', não zero",0,,
-censo,Cursos sequenciais de formação específica (TP_NIVEL_ACADEMICO=2),Removidos,O escopo é graduação; sequenciais não entram nas estatísticas oficiais de graduação do INEP,1732,3851933.0,3850201.0
-censo,Linhas duplicadas exatas,Removidas,Repetição pura não carrega informação,0,3850201.0,3850201.0
-censo,"Chave (ano, curso, município, dimensão) repetida com conteúdo diferente",Mantidas e marcadas (fl_chave_duplicada),Sem critério objetivo para escolher a linha correta; somar ambas preserva os totais INEP,0,,
-censo,TP_DIMENSAO=3: EAD 'somente nível Brasil' repete o curso EAD sem alunos por município,Mantidas e marcadas (fl_conta_alunos=false); excluídas de somas de ingressantes/matrículas,Somar dimensões 2 e 3 contaria o mesmo curso EAD duas vezes; vagas/inscritos EAD só existem na dim. 3,64381,,
-censo,TP_DIMENSAO=4: EAD ofertado no exterior (sem UF),Mantidas; UF = 'Exterior' em análises regionais,São alunos de IES brasileiras; entram no total Brasil,2242,,
-censo,Categorias administrativas 6/8/9 (particular/comunitária/confessional) existem só em 2009,"Herdada a categoria declarada pela mesma IES em 2010 (39,652 linhas); sem IES em 2010: 6→4 (com fins lucrativos), 8/9→5 (sem fins lucrativos)","Mapear 6→4 em bloco criava queda artificial de 3,4 mi → 2,1 mi matrículas 'com fins lucrativos' entre 2009 e 2010: 46% das matrículas 'particulares' eram de IES sem fins lucrativos",39953,,
-censo,TP_REDE ausente (praticamente todo o ano de 2013),"Derivada da categoria administrativa (1, 2, 3, 7 → Pública; 4, 5 → Privada)",Nos demais anos a relação categoria→rede é determinística (0 exceções); sem isso a série pública × privada some em 2013,64715,,
-censo,UF ausente em cursos presenciais/EAD por município,Mantidas como 'Não informado',Não há como inferir a UF sem o município,13,,
-censo,Sigla de UF divergente do código IBGE,Sigla/região recalculadas a partir de CO_UF,O código IBGE é a chave canônica,0,,
-censo,Contagens negativas,Seriam convertidas para NULL,Contagem não pode ser negativa,0,,
-censo,Soma feminino+masculino ≠ total de ingressantes,Marcadas (fl_incons_sexo_ing); totais preservados,Inconsistência rara de declaração; o total é o dado oficial,0,,
-censo,Soma das faixas etárias ≠ total de matrículas,Marcadas (fl_incons_idade_mat),Idem; afeta apenas análises por faixa etária,0,,
-censo,Concluintes acima do estoque de matrículas,Nenhuma ação (verificação),Checagem de plausibilidade,0,,
-censo,Área CINE ausente,Categoria própria 'Área não informada' (99),Remover enviesaria a série; imputar área a partir do nome do curso seria arbitrário,0,,
-censo,QT_MAT nulo em linhas que deveriam ter alunos,Mantido NULL (não imputado),Imputar 0 confundiria 'não informado' com 'sem alunos'; somas ignoram nulos,0,,
-censo,Escola de origem do ingressante (QT_ING_PROCESC*) zerada em 2009 e parcial em 2010–2012,2009 → NULL; % escola pública calculado sobre ingressantes com origem informada; série confiável a partir de 2013,Em 2009 o campo não foi coletado (todo zero); até 2012 pública+privada < ingressantes. Usar o total de ingressantes como denominador criaria um 'salto' de 0% para 71% que é artefato,51841,,
-censo,IN_GRATUITO ausente (não coletado em 2009),Mantido NULL,Variável inexistente no ano; ver dicionário INEP,51841,,
-censo,"Cursos com matrículas extremas (IQR em log1p, por modalidade)",Mantidos e marcados (fl_outlier_mat),"São fenômeno real (grandes cursos EAD/Direito/Pedagogia), não erro de digitação",79408,,
-censo,"Códigos numéricos sem rótulo (rede, categoria, organização, grau, modalidade, dimensão)",Decodificados via dicionário INEP em colunas ds_*,Leitura direta nos gráficos/tabelas,3850201,,
-censo,Código de município do INEP sem correspondência na tabela IBGE,Verificação de integridade (left join); sem remoção,"3,783,564 de 3,793,167 linhas com município casaram (99.747%)",9603,,
-ibge,População ausente nos anos [2023] (sem estimativa publicada),"Interpolação linear entre anos vizinhos, por UF",Crescimento populacional é suave; erro esperado < 1%,27,,
-integracao,Linhas do Censo sem população (chave UF×ano),"Ficam fora das taxas por 100 mil hab., mas dentro do total Brasil","3,783,564 de 3,785,820 linhas com alunos casaram (99.94%); as que não casam são EAD no exterior/sem UF",2256,,
-enade,Notas com vírgula decimal/strings e '.' como ausente,Normalizado separador e convertido para DOUBLE,Tipagem numérica para estatísticas,2415570,2415570.0,2415570.0
-enade,Notas fora do domínio 0–100,Convertidas para NULL,Domínio definido no dicionário,0,,
-enade,"Inscritos ausentes, eliminados ou com prova em branco/desconsiderada",Mantidos e marcados (fl_nota_valida=false); fora das médias de nota,"Remover apagaria a informação de abstenção, que também é resultado",413788,,
-enade,Presentes sem nota geral,Fora das médias (fl_nota_valida=false),Sem nota não há o que imputar com segurança,824,,
-enade,Atributos de curso repetidos 1×estudante no arquivo arq1,"Deduplicados para 1 linha por (ano, curso)",Cursos com atributos conflitantes: 0 (mantida a 1ª ocorrência),0,,
-integracao,Inscritos ENADE sem curso no arquivo de cursos do ENADE (arq1),Mantidos; atributos de curso nulos,"2,415,570 de 2,415,570 casaram",0,,
-integracao,Inscritos ENADE cujo CO_CURSO não aparece no Censo do mesmo ano,Mantidos; rede/área CINE ficam nulas,"2,411,272 de 2,415,570 casaram (99.82%); cursos extintos/não recenseados",4298,,
-enade,"Sexo fora de {M,F} (ex.: código 9/N)",Categoria 'Não informado'; fora do % feminino,Remover reduziria o denominador de forma arbitrária,3,,
-enade,Idade ausente ou implausível (<16 ou >90),Convertida para NULL,Erro de cadastro; não entra na média,603,,
+etapa,tabela,problema,decisao,justificativa,linhas_afetadas,linhas_antes,linhas_depois
+censo,censo,Nomes de colunas em MAIÚSCULAS com prefixos INEP,Padronizados para snake_case sem acento; 227→101 colunas mantidas (demais seguem no bronze),Legibilidade e consistência entre anos; colunas não usadas nas perguntas reduzem memória,3851933,3851933,3851933
+censo,censo,Tipos: tudo VARCHAR no bronze,Cast para TINYINT/SMALLINT/INTEGER com try_cast,Inteiros de tamanho adequado reduzem memória; valores não numéricos viram nulo (falhas de conversão: 0),0,3851933,3851933
+censo,censo,"CO_CINE_ROTULO com aspas duplicadas (ex.: """"""0011A09"""""")",Removidas as aspas,Padroniza o código CINE para junções e decodificação,3507242,3851933,3851933
+censo,censo,Marcador '.' (não aplicável) em campos numéricos,Convertido para NULL,"No layout INEP '.' significa 'não se aplica', não zero",0,3851933,3851933
+censo,censo,Cursos sequenciais de formação específica (TP_NIVEL_ACADEMICO=2),Removidos,O escopo é graduação; sequenciais não entram nas estatísticas oficiais de graduação do INEP,1732,3851933,3850201
+censo,censo,Linhas duplicadas exatas,Removidas,Repetição pura não carrega informação,0,3850201,3850201
+censo,censo,"Chave (ano, curso, município, dimensão) repetida com conteúdo diferente",Mantidas e marcadas (fl_chave_duplicada),Sem critério objetivo para escolher a linha correta; somar ambas preserva os totais INEP,0,3850201,3850201
+censo,censo,TP_DIMENSAO=3: EAD 'somente nível Brasil' repete o curso EAD sem alunos por município,Mantidas e marcadas (fl_conta_alunos=false); excluídas de somas de ingressantes/matrículas,Somar dimensões 2 e 3 contaria o mesmo curso EAD duas vezes; vagas/inscritos EAD só existem na dim. 3,64381,3850201,3850201
+censo,censo,TP_DIMENSAO=4: EAD ofertado no exterior (sem UF),Mantidas; UF = 'Exterior' em análises regionais,São alunos de IES brasileiras; entram no total Brasil,2242,3850201,3850201
+censo,censo,Categorias administrativas 6/8/9 (particular/comunitária/confessional) existem só em 2009,"Herdada a categoria declarada pela mesma IES em 2010 (39,652 linhas); sem IES em 2010: 6→4 (com fins lucrativos), 8/9→5 (sem fins lucrativos)","Mapear 6→4 em bloco criava queda artificial de 3,4 mi → 2,1 mi matrículas 'com fins lucrativos' entre 2009 e 2010: 46% das matrículas 'particulares' eram de IES sem fins lucrativos",39953,3850201,3850201
+censo,censo,TP_REDE ausente (praticamente todo o ano de 2013),"Derivada da categoria administrativa (1, 2, 3, 7 → Pública; 4, 5 → Privada)",Nos demais anos a relação categoria→rede é determinística (0 exceções); sem isso a série pública × privada some em 2013,64715,3850201,3850201
+censo,censo,UF ausente em cursos presenciais/EAD por município,Mantidas como 'Não informado',Não há como inferir a UF sem o município,13,3850201,3850201
+censo,censo,Sigla de UF divergente do código IBGE,Sigla/região recalculadas a partir de CO_UF,O código IBGE é a chave canônica,0,3850201,3850201
+censo,censo,Contagens negativas,Seriam convertidas para NULL,Contagem não pode ser negativa,0,3850201,3850201
+censo,censo,Soma feminino+masculino ≠ total de ingressantes,Marcadas (fl_incons_sexo_ing); totais preservados,Inconsistência rara de declaração; o total é o dado oficial,0,3850201,3850201
+censo,censo,Soma das faixas etárias ≠ total de matrículas,Marcadas (fl_incons_idade_mat),Idem; afeta apenas análises por faixa etária,0,3850201,3850201
+censo,censo,Concluintes acima do estoque de matrículas,Nenhuma ação (verificação),Checagem de plausibilidade,0,3850201,3850201
+censo,censo,Área CINE ausente,Categoria própria 'Área não informada' (99),Remover enviesaria a série; imputar área a partir do nome do curso seria arbitrário,0,3850201,3850201
+censo,censo,QT_MAT nulo em linhas que deveriam ter alunos,Mantido NULL (não imputado),Imputar 0 confundiria 'não informado' com 'sem alunos'; somas ignoram nulos,0,3850201,3850201
+censo,censo,Escola de origem do ingressante (QT_ING_PROCESC*) zerada em 2009 e parcial em 2010–2012,2009 → NULL; % escola pública calculado sobre ingressantes com origem informada; série confiável a partir de 2013,Em 2009 o campo não foi coletado (todo zero); até 2012 pública+privada < ingressantes. Usar o total de ingressantes como denominador criaria um 'salto' de 0% para 71% que é artefato,51841,3850201,3850201
+censo,censo,IN_GRATUITO ausente (não coletado em 2009),Mantido NULL,Variável inexistente no ano; ver dicionário INEP,51841,3850201,3850201
+censo,censo,"Cursos com matrículas extremas (IQR em log1p, por modalidade)",Mantidos e marcados (fl_outlier_mat),"São fenômeno real (grandes cursos EAD/Direito/Pedagogia), não erro de digitação",79408,3850201,3850201
+censo,censo,"Códigos numéricos sem rótulo (rede, categoria, organização, grau, modalidade, dimensão)",Decodificados via dicionário INEP em colunas ds_*,Leitura direta nos gráficos/tabelas,3850201,3850201,3850201
+censo,censo,Código de município do INEP sem correspondência na tabela IBGE,Verificação de integridade (left join); sem remoção,"3,783,564 de 3,793,167 linhas com município casaram (99.747%)",9603,3850201,3850201
+ibge,populacao_uf,População ausente nos anos [2023] (sem estimativa publicada),"Interpolação linear entre anos vizinhos, por UF",Crescimento populacional é suave; erro esperado < 1%,27,432,432
+integracao,censo,Linhas do Censo sem população (chave UF×ano),"Ficam fora das taxas por 100 mil hab., mas dentro do total Brasil","3,783,564 de 3,785,820 linhas com alunos casaram (99.94%); as que não casam são EAD no exterior/sem UF",2256,3850201,3850201
+enade,enade,Notas com vírgula decimal/strings e '.' como ausente,Normalizado separador e convertido para DOUBLE,Tipagem numérica para estatísticas,2415570,2415570,2415570
+enade,enade,Notas fora do domínio 0–100,Convertidas para NULL,Domínio definido no dicionário,0,2415570,2415570
+enade,enade,"Inscritos ausentes, eliminados ou com prova em branco/desconsiderada",Mantidos e marcados (fl_nota_valida=false); fora das médias de nota,"Remover apagaria a informação de abstenção, que também é resultado",413788,2415570,2415570
+enade,enade,Presentes sem nota geral,Fora das médias (fl_nota_valida=false),Sem nota não há o que imputar com segurança,824,2415570,2415570
+enade,enade_curso,Atributos de curso repetidos 1×estudante no arquivo arq1,"Deduplicados para 1 linha por (ano, curso)",Cursos com atributos conflitantes: 0 (mantida a 1ª ocorrência),0,45553,45553
+integracao,enade,Inscritos ENADE sem curso no arquivo de cursos do ENADE (arq1),Mantidos; atributos de curso nulos,"2,415,570 de 2,415,570 casaram",0,2415570,2415570
+integracao,enade,Inscritos ENADE cujo CO_CURSO não aparece no Censo do mesmo ano,Mantidos; rede/área CINE ficam nulas,"2,411,272 de 2,415,570 casaram (99.82%); cursos extintos/não recenseados",4298,2415570,2415570
+enade,enade_sexo,"Sexo fora de {M,F} (ex.: código 9/N)",Categoria 'Não informado'; fora do % feminino,Remover reduziria o denominador de forma arbitrária,3,2415570,2415570
+enade,enade_idade,Idade ausente ou implausível (<16 ou >90),Convertida para NULL,Erro de cadastro; não entra na média,603,2415570,2415570
